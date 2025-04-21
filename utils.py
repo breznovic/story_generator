@@ -1,14 +1,5 @@
-from fastapi import FastAPI, Query, Depends
-from pydantic import BaseModel
-import random
 from enum import Enum
-from sqlalchemy.orm import Session
-from .models import Story
-from .database import get_db, engine, Base
-
-Base.metadata.create_all(bind=engine)
-
-app = FastAPI()
+import random
 
 
 class SocialClass(str, Enum):
@@ -17,17 +8,6 @@ class SocialClass(str, Enum):
     MERCHANT = "merchant"
     NOBLE = "noble"
     CLERIC = "cleric"
-
-
-class StoryRequest(BaseModel):
-    social_class: SocialClass
-    region: str
-    include_conflict: bool = True
-
-
-@app.get("/")
-def read_root():
-    return {"message": "Welcome to medieval stories generator!"}
 
 
 def generate_childhood(social_class: SocialClass) -> str:
@@ -183,50 +163,3 @@ def generate_historical_conflict(social_class: SocialClass) -> str:
         ]
     }
     return random.choice(conflicts[social_class])
-
-
-@app.post("/generate-story")
-def generate_story(
-    request: StoryRequest,
-    db: Session = Depends(get_db)
-):
-    period_context = generate_historical_context()
-    base_story = f"You were born into a {request.social_class.value} family in {request.region} {period_context}. "
-    base_story += generate_childhood(request.social_class)
-    base_story += " " + generate_profession(request.social_class)
-
-    if request.include_conflict:
-        base_story += " " + generate_historical_conflict(request.social_class)
-
-    db_story = Story(
-        social_class=request.social_class.value,
-        region=request.region,
-        story_text=base_story
-    )
-
-    db.add(db_story)
-    db.commit()
-    db.refresh(db_story)
-
-    return {
-        "id": db_story.id,
-        "story": base_story,
-        "created_at": db_story.created_at
-    }
-
-
-@app.get("/stories/")
-def read_stories(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(10, ge=1, le=100),
-    db: Session = Depends(get_db)
-):
-    stories = db.query(Story).offset(skip).limit(limit).all()
-    total = db.query(Story).count()
-
-    return {
-        "items": stories,
-        "total": total,
-        "skip": skip,
-        "limit": limit
-    }
